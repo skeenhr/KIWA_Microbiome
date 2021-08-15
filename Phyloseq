@@ -14,7 +14,6 @@ library(decontam)
 ##Set working directory
 setwd()
 
-
 ##OTU table, taxonomy and tree file from QIIME output
 ##read in otu table
 otu_table <- read.table(file = "otu_matrix.csv", sep=",", row.names=1, header = TRUE)
@@ -45,15 +44,12 @@ taxonomy[taxonomy$Species %in% NA, "Species" ] <- "Unknown"
 taxonomy = as.matrix(taxonomy)
 head(taxonomy)
 
-
 ##read in metadata 
 metadata = read.csv("KIWA_Metadata.csv", header = TRUE)
 head(metadata)
 
-
 ##read in tree
 phy_tree = read_tree("tree.nwk.names.tre")
-
 
 #import as phyloseq objects
 OTU = otu_table(otu_table, taxa_are_rows = TRUE)
@@ -61,23 +57,18 @@ TAX = tax_table(taxonomy)
 META = sample_data(sample.metadata)
 #(tree was already imported as a phyloseq object)
 
-
 ##check that your OTU names are consistent across objects
 head(taxa_names(TAX))
 head(taxa_names(OTU))
 head(taxa_names(phy_tree))
 
-
 ##make sure your files have the same sample names
 head(sample_names(OTU))
 head(sample_names(META))
 
-
 ##create phyloseq object
 kiwa_physeq = phyloseq(OTU, TAX, META, phy_tree)
 kiwa_physeq
-
-
 
 ##Decontam
 ##see kiwa_decontam.R file for more details
@@ -100,10 +91,8 @@ which(contamdf.prev$contaminant)
 
 ##inspect "contaminant" ASVs individually
 
-
 ##Remove contaminant ASVs
 kiwa_01 <- prune_taxa(!contamdf.prev$contaminant, kiwa_physeq)
-
 
 ##remove neg.cons
 kiwa_02 <- subset_samples(kiwa_01, metadata$Sample_or_Control != "Control")
@@ -120,7 +109,6 @@ sample_sums(kiwa_05_rare)
 ##check results
 summarize_phyloseq(kiwa_05_rare)
 sample_sums(kiwa_05_rare
-
 
 ##basic numbers
 #number reads per sample
@@ -141,8 +129,6 @@ ts
 sort(ts)
 mean(ts)
 sd(ts)
-
-
 
 ##FIGURE 1 - TAXA BAR PLOTS
 library(microbiome)
@@ -279,7 +265,6 @@ top5 <- top5 + theme(panel.grid.major = element_blank(),
                      panel.background = element_blank())
 top5 <- top5 + theme(legend.position  = "none")
 top5 
-
 
 my_comparison <- list(c("CIB","EMI"), c("EMI","LMI"), c("CIB","LMI"))
 
@@ -444,7 +429,6 @@ Actino <- Actino + stat_compare_means(comparisons = my_comparison,
                                       label = "p.signif")
 Actino 
 
-
 ##Fig1
 top <- plot_grid(phylum_plot_top5) + 
   draw_label("Relative Abundance (%) ", x=  0, y=0.5, vjust= 1.5, angle=90, size = 12)
@@ -461,8 +445,6 @@ figure1
 "Bacteroidetes" ="#1f968bff", 
 "Actinobacteria" = "#482677FF"
 
-
-
 ###Alpha diversity and Figure 2
 ##estimate richness
 rich_kiwa_05 <- estimate_richness(kiwa_05_rare)
@@ -472,7 +454,6 @@ head(rich_kiwa_05)
 obs_meta ##datafrome of alpha diversity and metadata
 ##subset inds. w/o sex
 obs_meta.2 <- subset(obs_meta, SEX != 0 )
-
 
 ##model
 mod <- lmer(Shannon~SEX+Location_Only+as.numeric(AGE)+Year1+(1|HostID), data=obs_meta)
@@ -599,12 +580,6 @@ repeat2_SI <- repeat2_SI + theme(axis.line = element_line(size = 1))
 
 repeat2_SI
 
-
-
-
-
-
-
 ###Repeat3Test
 ###need to manually in excel arrange table just like in  repeat2 test  BUT
 ###BUT - color (increasing  or decreasing should be coded for the first of the sampling points
@@ -640,9 +615,6 @@ repeat3_Obs <- repeat3_Obs + theme(axis.line = element_line(size = 1))
 #                                    )
 repeat3_Obs
 
-
-
-
 repeat3_SI <- ggplot(data = div_3x, mapping = aes(Location_Only, Shannon, group = HostID)) + 
   geom_point(aes(color = Location_Only), size = 1) + 
   scale_color_manual(values=c("#FF3333", "#1F968BFF", "#482677FF")) +
@@ -668,7 +640,6 @@ repeat3_SI <- repeat3_SI + theme(axis.line = element_line(size = 1))
 
 repeat3_SI
 
-
 plot_grid(bp_obs_LO, repeat2_Obs, repeat3_Obs, 
           bp_SI_LO, repeat2_SI, repeat3_SI,
           nrow = 2, rel_widths = c(.4, .3, .3), labels = "AUTO")
@@ -677,3 +648,612 @@ r1 <- plot_grid(bp_obs_LO, repeat2_Obs, repeat3_Obs,
 r2 <- plot_grid(bp_SI_LO, repeat2_SI, repeat3_SI,
                 nrow = 1, rel_widths = c(.4, .3, .3))
 Figure3<-plot_grid(r1, r2, nrow =2)
+
+
+
+
+
+###Days after arrival in Michigan
+head(obs_meta, n=2)
+##Remove all but days 0-9
+obs_meta.DAAM <- subset(obs_meta, DAYS_AFTER_ARRIVAL_MI != "" )
+obs_meta.DAAM <- subset(obs_meta.DAAM, DAYS_AFTER_ARRIVAL_MI != 13 )
+obs_meta.DAAM <- subset(obs_meta.DAAM, DAYS_AFTER_ARRIVAL_MI != 14 )
+obs_meta.DAAM <- subset(obs_meta.DAAM, DAYS_AFTER_ARRIVAL_MI != 17 )
+obs_meta.DAAM <- subset(obs_meta.DAAM, DAYS_AFTER_ARRIVAL_MI != 27 )
+obs_meta.DAAM <- subset(obs_meta.DAAM, DAYS_AFTER_ARRIVAL_MI != 30 )
+obs_meta.DAAM <- subset(obs_meta.DAAM, DAYS_AFTER_ARRIVAL_MI != 38 )
+head(obs_meta.DAAM)
+
+library(mgcv)
+DT <- DAAM_Test
+head(DT)
+##plot observed and shannon
+gam_y <- gam(Shannon ~ s(DAYS_AFTER_ARRIVAL_MI), data = DAAM, method = "REML")
+#par(mfrow = c(2,2))
+gam.check(gam_y)
+summary(gam_y)
+gam_y$linear.predictors
+gam_y$coefficients
+gam_y$df.residual
+gam_y$residuals
+gam_y$fitted.values
+
+plot(gam_y)
+
+###Beta Diversity 
+library(microbiome) # data analysis and visualisation
+library(phyloseq) # also the basis of data object. Data analysis and visualisation
+library(RColorBrewer) # nice color options
+library(ggpubr) # publication quality figures, based on ggplot2
+library(dplyr) # data handling  
+library(vegan)
+library(devtools)
+library(ape)
+
+#
+
+##Code modified from here http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-01-Answers.html#beta-diversity-distances
+
+kiwa_repeat3 <- subset_samples(kiwa_05_rare, Repeat3 !="0")
+kiwa_repeat3
+
+
+sdt = data.table(as(sample_data(kiwa_repeat3), "data.frame"),
+                 TotalReads = sample_sums(kiwa_repeat3), keep.rownames = TRUE)
+
+
+
+
+###ORDINATION, use NMDS and jaccard or bray 
+###in adonis Variable1 * Var2 means will test for interaction,
+###Var1 + Var2 means will test each variable separately. 
+
+ordu = ordinate(kiwa_05_rare, "NMDS", "bray", weighted=FALSE)
+
+nmds_ordu <-plot_ordination(kiwa_05_rare, ordu, color="Location_Only") + 
+  stat_ellipse(alpha =.7) +
+  scale_color_manual(values=c("#FF3333", "#1F968BFF", "#482677FF"), labels = c("CIB", "MI1", "MI2")) +
+  theme(legend.position = c(0.2, 0.8))
+nmds_ordu <- nmds_ordu + theme(axis.line = element_line(size = 0.5))
+nmds_ordu <- nmds_ordu + theme(panel.grid.major = element_blank(), 
+                               panel.grid.minor = element_blank(),
+                               panel.background = element_blank())
+nmds_ordu <- nmds_ordu + guides(col=guide_legend("Sampling Period", override.aes = (shape = override.shape)))
+nmds_ordu 
+
+
+###Ordination of individual birds rsampled 3 times 
+ordu_bc <- ordinate(kiwa_05_rare, "NMDS", "bray")
+p = plot_ordination(kiwa_05_rare, ordu_bc, shape = "Location_Only", color = "Repeat3test")
+##Need to manually change NA to a color to visualize each individual 
+##Fist listed NA is for all the samples that are not the repeat3 birds 
+library("scales")
+p16 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, "#F8766D", NA,
+                              NA, NA, NA,
+                              NA, NA, NA, NA)) +
+  theme(legend.position ="none") 
+
+p17 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, NA, "#D89000",
+                              NA, NA, NA,
+                              NA, NA, NA, NA)) +
+  theme(legend.position ="none") 
+
+p43 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, NA, NA,
+                              "#95A900", NA, NA,
+                              NA, NA, NA, NA)) +
+  theme(legend.position ="none")
+
+p45525 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, NA, NA,
+                              NA, "#00b81F", NA,
+                              NA, NA, NA, NA)) +
+  theme(legend.position ="none") 
+
+p45526 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.9, size =0.5) + 
+  scale_color_manual(values=c(NA, NA, NA,
+                              NA, NA, "#00C1AA",
+                              NA, NA, NA, NA)) +
+  theme(legend.position ="none") 
+
+p45237 <- p + geom_path(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, NA, NA,
+                              NA, NA, NA,
+                              "#00A5FF", NA, NA, NA)) +
+  theme(legend.position ="none") 
+
+p45416 <- p + geom_path(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, NA, NA,
+                              NA, NA, NA,
+                              NA, "#00B4EF", NA, NA)) +
+  theme(legend.position ="none") 
+
+p61 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, NA, NA,
+                              NA, NA, NA,
+                              NA, NA, "#F066EA", NA)) +
+  theme(legend.position ="none")
+
+p99 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, NA, NA,
+                              NA, NA, NA,
+                              NA, NA, NA, "#FC717F")) +
+  theme(legend.position ="none") 
+
+library(gridExtra)
+repeat3_sep <- grid.arrange(p16, p17, p43, p45525, p45526,  
+                            p45237, p45416, p61, p99, nrow = 3) 
+
+grid.arrange(nmds_ordu, repeat3_sep, nrow = 1)
+
+
+p_all3 <- p + geom_line(aes(group = Repeat3test), alpha  = 0.5, size =  1) + 
+  scale_color_manual(values=c(NA, "#F8766D", "#D89000",
+                              "#95A900", "#00b81F", "#00C1AA",
+                              "#00B4EF", "#F066EA", "#F066EA", "#FC717F")) +
+  theme(legend.position ="none") +
+  ggtitle("")
+p_all3 
+
+##Location_Only
+metadata_LO <- as(sample_data(kiwa_05_rare), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ Location_Only, data = metadata_LO, perm=9999)
+ps.adonis.bray
+
+bray_LO <- betadisper(dist.bray, metadata_LO$Location_Only)
+anova(bray_LO)
+permutest(bray_LO)
+plot(bray_LO,label = FALSE, )
+boxplot(bray_LO)
+
+dist.wunifrac_LO <- phyloseq::distance(kiwa_05_rare, method = "unifrac")
+ps.adonis.wun <- adonis(dist.wunifrac_LO ~ Location_Only, data = metadata_LO, perm=9999)
+ps.adonis.wun
+
+unifrac_LO <- betadisper(dist.wunifrac_LO, metadata_LO$Location_Only)
+anova(unifrac_LO)
+permutest(unifrac_LO)
+plot(unifrac_LO, label = FALSE)
+boxplot(unifrac_LO)
+
+##Sex
+metadata_sex <- as(sample_data(kiwa_05_rare_sex), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_sex, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ SEX, data = metadata_sex, perm=9999)
+ps.adonis.bray
+
+sex.bd <- betadisper(dist.bray, metadata_sex$SEX)
+anova(sex.bd)
+permutest(sex.bd)
+
+dist.unifrac <- phyloseq::distance(kiwa_05_rare_sex, method = "unifrac")
+ps.adonis.unif <- adonis(dist.unifrac ~ SEX, data = metadata_sex, perm=9999)
+ps.adonis.unif
+
+sex.uf <- betadisper(dist.unifrac, metadata_sex$SEX)
+anova(sex.uf)
+permutest(sex.uf)
+
+plot(sex.uf, label = FALSE)
+boxplot(sex.uf)
+
+##Sex_CIB
+metadata_sex_CIB <- as(sample_data(kiwa_05_rare_CIB_sex), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_CIB_sex, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ SEX, data = metadata_sex_CIB, perm=9999)
+ps.adonis.bray
+
+#sex.bd <- betadisper(dist.bray, metadata_sex$SEX)
+#anova(sex.bd)
+#permutest(sex.bd)
+
+dist.unifrac <- phyloseq::distance(kiwa_05_rare_CIB_sex, method = "unifrac")
+ps.adonis.unif <- adonis(dist.unifrac ~ SEX, data = metadata_sex_CIB, perm=9999)
+ps.adonis.unif
+
+#sex.uf <- betadisper(dist.wunifrac, metadata_LO$SEX)
+#anova(sex.uf)
+#permutest(sex.uf)
+
+##Sex_EMI
+metadata_sex_EMI <- as(sample_data(kiwa_05_rare_EMI_sex), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_EMI_sex, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ SEX, data = metadata_sex_EMI, perm=9999)
+ps.adonis.bray
+
+#sex.bd <- betadisper(dist.bray, metadata_sex$SEX)
+#anova(sex.bd)
+#permutest(sex.bd)
+
+dist.unifrac <- phyloseq::distance(kiwa_05_rare_EMI_sex, method = "unifrac")
+ps.adonis.unif <- adonis(dist.unifrac ~ SEX, data = metadata_sex_EMI, perm=9999)
+ps.adonis.unif
+
+#sex.uf <- betadisper(dist.wunifrac, metadata_LO$SEX)
+#anova(sex.uf)
+#permutest(sex.uf)
+
+##Sex_LMI
+metadata_sex_LMI <- as(sample_data(kiwa_05_rare_LMI_sex), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_LMI_sex, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ SEX, data = metadata_sex_LMI, perm=9999)
+ps.adonis.bray
+
+#sex.bd <- betadisper(dist.bray, metadata_sex$SEX)
+#anova(sex.bd)
+#permutest(sex.bd)
+
+dist.unifrac <- phyloseq::distance(kiwa_05_rare_LMI_sex, method = "unifrac")
+ps.adonis.unif <- adonis(dist.unifrac ~ SEX, data = metadata_sex_LMI, perm=9999)
+ps.adonis.unif
+
+sex.uf <- betadisper(dist.wunifrac, metadata_LO$SEX)
+anova(sex.uf)
+permutest(sex.uf)
+
+##AGE
+metadata <- as(sample_data(kiwa_05_rare_age), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_age, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ AGE, data = metadata, perm=9999)
+ps.adonis.bray
+
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare_age, method = "unifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ AGE, data = metadata, perm=9999)
+ps.adonis.UNUF
+
+##AGE_CIB
+metadata <- as(sample_data(kiwa_05_rare_age_CIB), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_age_CIB, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ AGE, data = metadata, perm=9999)
+ps.adonis.bray
+
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare_age_CIB, method = "unifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ AGE, data = metadata, perm=9999)
+ps.adonis.UNUF
+
+##AGE_EMI
+metadata <- as(sample_data(kiwa_05_rare_age_EMI), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_age_EMI, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ AGE, data = metadata, perm=9999)
+ps.adonis.bray
+
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare_age_EMI, method = "unifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ AGE, data = metadata, perm=9999)
+ps.adonis.UNUF
+
+ageEMI.uf <- betadisper(dist.wunifrac, metadata$AGE)
+anova(ageEMI.uf)
+permutest(ageEMI.uf)
+
+plot(ageEMI.uf, label = FALSE)
+boxplot(ageEMI.uf)
+
+##AGE_LMI
+metadata <- as(sample_data(kiwa_05_rare_age_LMI), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_age_LMI, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ AGE, data = metadata, perm=9999)
+ps.adonis.bray
+
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare_age_LMI, method = "unifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ AGE, data = metadata, perm=9999)
+ps.adonis.UNUF
+
+##Year
+metadata <- as(sample_data(kiwa_05_rare), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ Year1, data = metadata, perm=9999)
+ps.adonis.bray
+
+Year1.bd <- betadisper(dist.bray, metadata$Year1)
+anova(Year1.bd)
+permutest(Year1.bd)
+plot(Year1.bd)
+
+ordu = ordinate(kiwa_05_rare, "PCoA", "unifrac", weighted=FALSE)
+plot_ordination(kiwa_05_rare, ordu, color="Location_Year") +  stat_ellipse()
+
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare, method = "unifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ Year1, data = metadata, perm=9999)
+ps.adonis.UNUF
+
+year1.unuf <- betadisper(dist.wunifrac, metadata$Year1)
+anova(year1.unuf)
+permutest(year1.unuf)
+plot(year1.unuf)
+
+##Year_CIB
+metadata <- as(sample_data(kiwa_05_rare_CIB), "data.frame")
+
+dist.bray <- phyloseq::distance(kiwa_05_rare_CIB, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ Year1, data = metadata, perm=9999)
+ps.adonis.bray
+
+Year1.bd <- betadisper(dist.bray, metadata$Year1)
+anova(Year1.bd)
+permutest(Year1.bd)
+
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare_CIB, method = "wunifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ Year1, data = metadata, perm=9999)
+ps.adonis.UNUF
+year1.unuf <- betadisper(dist.wunifrac, metadata$Year1)
+anova(year1.unuf)
+permutest(year1.unuf)
+plot(year1.unuf, label = FALSE)
+
+##Year_EMI
+kiwa_05_rare_EMI <- subset_samples(kiwa_05_rare, Location_Only =="EMI")
+metadata <- as(sample_data(kiwa_05_rare_EMI), "data.frame")
+dist.bray <- phyloseq::distance(kiwa_05_rare_EMI, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ Year1, data = metadata, perm=9999)
+ps.adonis.bray
+plot(dist.bray)
+Year1.bd <- betadisper(dist.bray, metadata$Year1)
+anova(Year1.bd)
+permutest(Year1.bd)
+plot(Year1.bd,  label = FALSE)
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare_EMI, method = "unifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ Year1, data = metadata, perm=9999)
+ps.adonis.UNUF
+Year1.uf <- betadisper(dist.wunifrac , metadata$Location_Year)
+anova(Year1.uf)
+permutest(Year1.uf)
+plot(Year1.uf, label = FALSE)
+
+##Year_LMI
+metadata <- as(sample_data(kiwa_05_rare_LMI), "data.frame")
+dist.bray <- phyloseq::distance(kiwa_05_rare_LMI, method = "bray")
+ps.adonis.bray <- adonis(dist.bray ~ Year1, data = metadata, perm=9999)
+ps.adonis.bray
+Year1.bd <- betadisper(dist.bray, metadata$Year1)
+anova(Year1.bd)
+permutest(Year1.bd)
+plot(Year1.bd, label = FALSE)
+boxplot(Year1.bd)
+dist.wunifrac <- phyloseq::distance(kiwa_05_rare_LMI, method = "unifrac")
+ps.adonis.UNUF <- adonis(dist.wunifrac ~ Year1, data = metadata, perm=9999)
+ps.adonis.UNUF
+Year1.uf <- betadisper(dist.wunifrac, metadata$Year1)
+anova(Year1.uf)
+permutest(Year1.uf)
+plot(Year1.uf, label = FALSE)
+boxplot(Year1.uf)
+
+DistBC = phyloseq::distance(kiwa_05_rare_LMI, method = "bray")
+ordBC = ordinate(kiwa_repeat3, method = "PCoA", distance = DistBC)
+
+
+
+
+###ANCOM-BC
+library(phyloseq)
+library(microbiome)
+library(tidyverse)
+library(DT)
+data(GlobalPatterns)
+
+
+##1. subset to locations
+kw_emi <- subset_samples(kiwa_05, Location_Only != "EMI")
+kw_lmi <- subset_samples(kiwa_05, Location_Only != "LMI")
+kw_cib <- subset_samples(kiwa_05, Location_Only != "CIB")
+
+##2. Remove empty ASVs --  I don't know that this is correct
+
+kw_emi <- prune_taxa(taxa_sums(kw_emi)>0, kw_emi)
+kw_lmi <- prune_taxa(taxa_sums(kw_lmi)>0, kw_lmi)
+kw_cib <- prune_taxa(taxa_sums(kw_cib)>0, kw_cib)
+
+# Aggregate to phylum level
+emi_genus = aggregate_taxa(kw_emi, "Genus")
+lmi_genus = aggregate_taxa(kw_lmi, "Genus")
+cib_genus = aggregate_taxa(kw_cib, "Genus")
+
+
+
+
+##http://www.bioconductor.org/packages/release/bioc/vignettes/ANCOMBC/inst/doc/ANCOMBC.html
+###start here
+kiwa_genus = aggregate_taxa(kiwa_05_rare, "Genus")
+
+kiwa_genus_sex = subset_samples(kiwa_genus, SEX !="0")
+kiwa_genus_age = subset_samples(kiwa_genus, AGE !="0")
+kw_EMILMI <- subset_samples(kiwa_genus, Location_Only != "CIB")
+
+
+# The taxonomy table
+#tax_mat = as(tax_table(kiwa_genus), "matrix")
+#head(tax_mat)
+# Run ancombc function
+out_all = ANCOMBC::ancombc(phyloseq = kiwa_genus, formula = "Location_Only",
+              p_adj_method = "bonferroni", zero_cut = 0.90, lib_cut = 1000,
+              group = "Location_Only", struc_zero = TRUE, neg_lb = FALSE,
+              tol = 1e-5, max_iter = 100, conserve = TRUE,
+              alpha = 0.05, global = TRUE)
+head(out_all)
+
+
+
+res = out_all$res
+head(res)
+res_global = out_all$res_global
+head(res_global)
+
+
+tab_coef = res$beta
+col_name = c("CIB-EMI", "CIB_LMI")
+colnames(tab_coef) = col_name
+tab_coef %>% datatable(caption = "Coefficients from the Primary Result") %>%
+  formatRound(col_name, digits = 2)
+#write_csv(tab_coef, "tab_coef.csv")
+head(tab_coef)
+
+tab_se = res$se
+colnames(tab_se) = col_name
+tab_se %>% datatable(caption = "SEs from the Primary Result") %>%
+  formatRound(col_name, digits = 2)
+head(tab_se)
+
+tab_w = res$W
+colnames(tab_w) = col_name
+tab_w %>% datatable(caption = "Test Statistics from the Primary Result") %>%
+  formatRound(col_name, digits = 2)
+head(tab_w)
+
+tab_p = res$p_val
+colnames(tab_p) = col_name
+tab_p %>% datatable(caption = "P-values from the Primary Result") %>%
+  formatRound(col_name, digits = 2)
+head(tab_p)
+
+tab_q = res$q
+colnames(tab_q) = col_name
+tab_q %>% datatable(caption = "Adjusted p-values from the Primary Result") %>%
+  formatRound(col_name, digits = 2)
+head(tab_q)
+
+tab_diff = res$diff_abn
+colnames(tab_diff) = col_name
+tab_diff %>% 
+  datatable(caption = "Differentially Abundant Taxa 
+            from the Primary Result")
+head(tab_diff)
+
+samp_frac = out_all$samp_frac
+# Replace NA with 0
+samp_frac[is.na(samp_frac)] = 0 
+
+# Add pesudo-count (1) to avoid taking the log of 0
+log_obs_abn = log(abundances(kiwa_genus) + 1) 
+# Adjust the log observed abundances
+log_obs_abn_adj = t(t(log_obs_abn) - samp_frac)
+
+dim(samp_frac)
+# Show the first 6 samples
+round(log_obs_abn_adj[, 1:6], 2) %>% 
+  datatable(caption = "Bias-adjusted log observed abundances")
+
+df_fig1 = data.frame(res$beta * res$diff_abn, check.names = FALSE) %>% 
+  rownames_to_column("taxon_id")
+df_fig2 = data.frame(res$se * res$diff_abn, check.names = FALSE) %>% 
+  rownames_to_column("taxon_id")
+
+
+colnames(df_fig2)[-1] = paste0(colnames(df_fig2)[-1], "SD")
+df_fig = df_fig1 %>% left_join(df_fig2, by = "taxon_id") #%>%
+  #transmute(Location_OnlyEMI, Location_OnlyEMISD) 
+df_fig$taxon_id = factor(df_fig$taxon_id, levels = df_fig$taxon_id)
+
+p = ggplot(data = df_fig, 
+           aes(x = taxon_id, y = Location_OnlyEMI)) + 
+  geom_bar(stat = "identity", width = 0.7, 
+           position = position_dodge(width = 0.4)) +
+  geom_errorbar(aes(ymin = Location_OnlyEMI - Location_OnlyEMISD, ymax = Location_OnlyEMI + Location_OnlyEMISD), width = 0.2,
+                position = position_dodge(0.05), color = "black") + 
+  labs(x = NULL, y = "Log fold change", 
+       title = "Age-ANCOMBC-Genera") + 
+  theme_bw() + 
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.minor.y = element_blank(),
+        axis.text.x = element_text(angle = 60, hjust = 1))
+p
+
+###write csv and configure for plotting.  
+#write_csv(df_fig, "ancombc_df_fig_year2.csv")
+
+test1 <- read.csv("ancom_df_fig2.csv", header = TRUE)
+
+test1 <- ancombc_df_fig2
+head(test1)
+unique(test1$Phylum)
+
+
+##Order Phyla
+x$name <- factor(x$name, levels = x$name[as.numeric(order(x$val))])
+test1$taxon_id <- factor(test1$taxon_id, levels = test1$taxon_id[order(as.numeric(test1$Order))])
+
+
+CIBMI1 = ggplot(data = test1, aes(x = Location_OnlyEMI, y = taxon_id, fill = Phylum)) + 
+  geom_bar(stat = "identity", width = 0.9, 
+           position = position_dodge(width = 0.4)) +
+  scale_fill_manual(values = c("#3333FF", "#482677FF",  "#f68f46ff", "#FF3333")) +
+  #labels = c("Acidobacteria", "Actinobacteria","Firmicutes", "Proteobacteria")) +
+  geom_errorbar(aes(xmin = CI_EMI_Lower, xmax = CI_EMI_Upper), width = 0.2,
+           position = position_dodge(0.95), color = "black") + 
+  labs(x = "Log fold change", y = NULL, 
+       title = "CIB-MI1") + 
+  theme_bw() + 
+  geom_vline(xintercept=0, size = 0.25) +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.minor.y = element_blank(),
+        axis.text.x = element_text( hjust = 1),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) + 
+  ggtitle("The Bahamas -\n First recapture in Michigan")
+CIBMI1
+
+
+CIBMI2 = ggplot(data = test1, aes(x = Location_OnlyLMI, y = taxon_id, fill = Phylum)) + 
+  geom_bar(stat = "identity", width = 0.9, 
+           position = position_dodge(width = 0.4)) +
+           scale_fill_manual(values = c("#3333FF", "#482677FF",  "#f68f46ff", "#FF3333")) +
+                    #labels = c("Acidobacteria", "Actinobacteria","Firmicutes", "Proteobacteria")) +
+  geom_errorbar(aes(xmin = CI_LMI_Lower, xmax = CI_LMI_Upper), width = 0.2,
+                position = position_dodge(0.95), color = "black") + 
+  labs(x = "Log fold change", y = NULL, 
+       title = "CIB-MI2") + 
+  theme_bw() + 
+  geom_vline(xintercept=0, size = 0.25)+
+  theme(legend.justification=c(1,0), 
+        legend.position=c(0.95,0.60),
+        legend.background = element_rect(colour = "black", size = .25), 
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.minor.y = element_blank(),
+        axis.text.x = element_text(hjust = 1),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) + 
+  ggtitle("The Bahamas -\n Second recapture in Michigan")
+CIBMI2
+
+
+
+
+library(cowplot)
+ANCOMBC <- plot_grid(CIBMI1, CIBMI2, nrow = 1, rel_widths = c(.6, .4), labels = "AUTO")
+ANCOMBC
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
