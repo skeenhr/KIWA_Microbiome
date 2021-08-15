@@ -1,0 +1,679 @@
+library(phyloseq)
+library(dplyr)
+library(ggplot2)
+library(ape)
+library(plyr)
+library(Distance)
+library(tidyverse)
+library(decontam)
+library(vegan)
+library(data.table)
+library(genefilter)
+library(decontam)
+
+##Set working directory
+setwd()
+
+
+##OTU table, taxonomy and tree file from QIIME output
+##read in otu table
+otu_table <- read.table(file = "otu_matrix.csv", sep=",", row.names=1, header = TRUE)
+otu_table <- as.matrix(otu_table)
+head(otu_table)
+
+##read in taxonomy file
+taxonomy <- read.csv(file = "taxonomy.csv", sep = ",", row.names = 1, na.strings = "")
+head(taxonomy)
+
+###Remove NAs and replace with "Unknown" 
+taxonomy$Phylum <- as.character(taxonomy$Phylum)   
+taxonomy[taxonomy$Phylum %in% "NA", "Phylum" ] <- "Unknown"
+taxonomy$Class <- as.character(taxonomy$Class)   
+taxonomy[taxonomy$Class %in% "NA", "Class" ] <- "Unknown"
+taxonomy$Class <- as.character(taxonomy$Class)   
+taxonomy[taxonomy$Class %in% "uncultured bacterium", "Class" ] <- "Unknown"
+taxonomy$Order <- as.character(taxonomy$Order)   
+taxonomy[taxonomy$Order %in% NA, "Order" ] <- "Unknown"
+taxonomy$Family <- as.character(taxonomy$Family)   
+taxonomy[taxonomy$Family %in% NA, "Family" ] <- "Unknown"
+taxonomy$Genus <- as.character(taxonomy$Genus)   
+taxonomy[taxonomy$Genus %in% NA, "Genus" ] <- "Unknown"
+taxonomy$Species <- as.character(taxonomy$Species)   
+taxonomy[taxonomy$Species %in% NA, "Species" ] <- "Unknown"
+
+##convert taxonomy to a matrix
+taxonomy = as.matrix(taxonomy)
+head(taxonomy)
+
+
+##read in metadata 
+metadata = read.csv("KIWA_Metadata.csv", header = TRUE)
+head(metadata)
+
+
+##read in tree
+phy_tree = read_tree("tree.nwk.names.tre")
+
+
+#import as phyloseq objects
+OTU = otu_table(otu_table, taxa_are_rows = TRUE)
+TAX = tax_table(taxonomy)
+META = sample_data(sample.metadata)
+#(tree was already imported as a phyloseq object)
+
+
+##check that your OTU names are consistent across objects
+head(taxa_names(TAX))
+head(taxa_names(OTU))
+head(taxa_names(phy_tree))
+
+
+##make sure your files have the same sample names
+head(sample_names(OTU))
+head(sample_names(META))
+
+
+##create phyloseq object
+kiwa_physeq = phyloseq(OTU, TAX, META, phy_tree)
+kiwa_physeq
+
+
+
+##Decontam
+##see kiwa_decontam.R file for more details
+
+##inspect library size
+##Put sample_data into a ggplot-friendly data.frame
+df <- as.data.frame(sample_data(kiwa_physeq)) 
+df$LibrarySize <- sample_sums(kiwa_physeq)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+head(df)
+
+##prev/abundance method at default 
+sample_data(kiwa_physeq)$is.neg <- sample_data(kiwa_physeq)$Sample_or_Control == "Control"
+contamdf.prev <- isContaminant(kiwa_physeq, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+head(which(contamdf.prev$contaminant))
+which(contamdf.prev$contaminant)
+
+##inspect "contaminant" ASVs individually
+
+
+##Remove contaminant ASVs
+kiwa_01 <- prune_taxa(!contamdf.prev$contaminant, kiwa_physeq)
+
+
+##remove neg.cons
+kiwa_02 <- subset_samples(kiwa_01, metadata$Sample_or_Control != "Control")
+
+##remove dups and failed samples
+
+###phloseq objects 
+kiwa_05 ###non-rarefied 
+
+###rarefy
+kiwa_05_rare = rarefy_even_depth(kiwa_05, replace=FALSE, sample.size = 7000)
+sample_sums(kiwa_05_rare)
+
+##check results
+summarize_phyloseq(kiwa_05_rare)
+sample_sums(kiwa_05_rare
+
+
+##basic numbers
+#number reads per sample
+ss<- sample_sums(kiwa_05)
+ss <- as.matrix(ss)
+##order numbers (to find highest and lowest read count)
+sort(ss)
+mean(ss)
+sd(ss)
+tax_table(kiwa_05)
+ntaxa(kiwa_05)
+
+##average number of ASVs per sample
+asv_df <- t(otu_table(kiwa_05))
+ts <- rowSums(asv_df != 0)
+ts <- as.matrix(ts)
+ts
+sort(ts)
+mean(ts)
+sd(ts)
+
+
+
+##FIGURE 1 - TAXA BAR PLOTS
+library(microbiome)
+library(ggpubr)
+library(cowplot)
+
+###Prep kiwa_05 for rarefied taxa bar plots
+###rngseed 124 = 5540 removed ASVs
+kiwa_05_rare = rarefy_even_depth(kiwa_05, rngseed=124, replace=FALSE)
+sample_sums(kiwa_05_rare)
+
+kiwa_06_rare <- transform_sample_counts(kiwa_05_rare, function(x) x / sum(x))
+kiwa_06_rare
+
+##Remove unassigned Kingdom OTUs
+kiwa_07_rare <- subset_taxa(kiwa_05_rare, Kingdom != "Unassigned")
+kiwa_07_rare
+
+kiwa_08_rare <- subset_taxa(kiwa_07_rare, Phylum != "-1")
+kiwa_08_rare
+
+##Remove blank Phylum OTUs
+kiwa_09_rare <- subset_taxa(kiwa_08_rare, Phylum != "")
+kiwa_09_rare
+
+##transform data into abundance
+kiwa_10_rare <- transform_sample_counts(kiwa_09_rare, function(x) 100 * x/sum(x))
+kiwa_10_rare
+
+###to show proportion of a specific group of phyla 
+glom <- tax_glom(kiwa_10_rare, taxrank = 'Phylum')
+glom # should list # taxa as # phyla
+data_glom_phylum<- psmelt(glom) # create dataframe from phyloseq object
+data_glom_phylum$Phylum <- as.character(data_glom_phylum$Phylum) #convert to character
+
+unique(data_glom_phylum$Phylum)
+
+##Replace all other phyla with "<1% abund. 
+dgp_top5 <- data_glom_phylum
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Synergistetes", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Acidobacteria", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "RsaHF231", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Chlamydiae", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Tenericutes", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Verrucomicrobia", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Planctomycetes", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Chloroflexi", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Euryarchaeota", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Epsilonbacteraeota", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Spirochaetes", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Armatimonadetes", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Rokubacteria", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Fusobacteria", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Gemmatimonadetes", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Thaumarchaeota", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Deinococcus-Thermus", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "<1%  abund.", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "<1% abund.", "other")
+dgp_top5$Phylum <- replace(as.character(dgp_top5$Phylum), dgp_top5$Phylum == "Synergistetes", "other")
+dgp_top5$Phylum <- factor(dgp_top5$Phylum, levels = c("Proteobacteria", "Firmicutes", "Cyanobacteria", "Bacteroidetes",  "Actinobacteria", "other" ))
+
+unique(data_glom_phylum$Phylum)
+unique(dgp_top5$Phylum)
+
+phylum_plot_top5 <- ggplot(data = dgp_top5, aes(x= Sample, y = Abundance, fill = Phylum)) + 
+  facet_grid(~Location_Only, scales = "free", space = "free",
+             labeller = labeller(Location_Only = c('CIB'="Initial Capture \n (CIB) \n The Bahamas \n March 23-April 24", 
+                                                   'EMI' = "Recapture 1 \n(MI1)\nMichigan \n May 13-June 26", 
+                                                   'LMI' = "Recap. 2 \n(MI2)\n Michigan \n July 1-11"))) + 
+  labs(x = "", y = "") + 
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank()) + 
+  guides(fill=guide_legend(ncol=1)) 
+
+phylum_plot_top5 <- phylum_plot_top5 + theme(axis.title.y = element_text(size = rel(1.2), angle = 90), panel.background = element_blank())
+phylum_plot_top5 <- phylum_plot_top5 + theme(axis.title.x = element_text(size = rel(1.2), angle = 00))
+phylum_plot_top5 <- phylum_plot_top5 + geom_bar(aes(), stat = "identity", position = "stack") 
+phylum_plot_top5 <- phylum_plot_top5 + scale_fill_manual(values = c("#FF3333", "#f68f46ff", "#e8fa5bff", "#1f968bff", "#482677FF", "dimgray"),
+                                                                     labels = c("Proteobacteria", "Firmicutes", "Cyanobacteria", "Bacteroidetes",  "Actinobacteria", "<1% abundance"))
+
+phylum_plot_top5 <- phylum_plot_top5 + theme(legend.title = element_blank())
+phylum_plot_top5 <- phylum_plot_top5 + theme(legend.text = element_text(size = 10),
+                                                         legend.key.size = unit(0.5, "cm"))
+phylum_plot_top5
+
+##Start with relative abundance phyloseq object, in this case kiwa_06
+##Remove unwanted (low abundance Phyla)
+kiwa_06_top5 <- subset_taxa(kiwa_06_rare, Phylum != "Acidobacteria")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Armatimonadetes")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "BRC1")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Calditrichaeota")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Chlamydiae")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Chloroflexi")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Deferribacteres")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Deinococcus-Thermus")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Entotheonellaeota")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Epsilonbacteraeota")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Euryarchaeota")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "FBP")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Fibrobacteres")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Fusobacteria")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Gemmatimonadetes")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Kiritimatiellaeota")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Latescibacteria")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Lentisphaerae")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Nitrospirae")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Planctomycetes")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Rokubacteria")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "RsaHF231")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Patescibacteria")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Spirochaetes")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Synergistetes")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Tenericutes")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Thaumarchaeota")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "Verrucomicrobia")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "WPS-2")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "WS2")
+kiwa_06_top5 <- subset_taxa(kiwa_06_top5, Phylum != "WS4")
+
+###Then check with all plots
+ps_phylum <- phyloseq::tax_glom(kiwa_06_top5, "Phylum")
+phyloseq::taxa_names(ps_phylum) <- phyloseq::tax_table(ps_phylum)[, "Phylum"]
+phyloseq::otu_table(ps_phylum)
+
+top5 <- phyloseq::psmelt(ps_phylum) %>%
+  ggplot(data = ., aes(x = Location_Only, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(aes(color = OTU), height = 0, width = .2) +
+  labs(x = "", y = "Abundance\n") +
+  facet_wrap(~ OTU, scales = "free") 
+top5 <- top5 + scale_x_discrete(labels = c("EMI" = "MI1", "LMI" = "MI2"))
+top5 <- top5 + theme(axis.line = element_line(size = 1))
+top5 <- top5 + theme(panel.grid.major = element_blank(), 
+                     panel.grid.minor = element_blank(),
+                     panel.background = element_blank())
+top5 <- top5 + theme(legend.position  = "none")
+top5 
+
+
+my_comparison <- list(c("CIB","EMI"), c("EMI","LMI"), c("CIB","LMI"))
+
+##Proteobacteria
+kiwa_06_Proteo <- subset_taxa(kiwa_06_top5, Phylum == "Proteobacteria")
+
+glom <- tax_glom(kiwa_06_Proteo, taxrank = 'Phylum')
+glom # should list # taxa as # phyla
+data_glom_Proteo<- psmelt(glom) # create dataframe from phyloseq object
+data_glom_Proteo$Phylum <- as.character(data_glom_phylum$Phylum) #convert to character
+head(data_glom_Proteo)
+
+unique(data_glom_phylum$Phylum)
+compare_means(Abundance ~ Location_Only, data_glom_Proteo )
+
+my_comparison <- list(c("CIB","EMI"), c("EMI","LMI"), c("CIB","LMI"))
+
+ps_phylum_proteo <- phyloseq::tax_glom(kiwa_06_Proteo, "Phylum")
+phyloseq::taxa_names(ps_phylum_proteo ) <- phyloseq::tax_table(ps_phylum_proteo )[, "Phylum"]
+phyloseq::otu_table(ps_phylum_proteo )
+
+Proteo <- phyloseq::psmelt(ps_phylum_proteo) %>%
+  ggplot(data = ., aes(x = Location_Only, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(aes(color = OTU), width = .25, alpha =0) +
+  labs(x = "", y = "") +
+  facet_wrap(~ OTU, scales = "free") + theme(
+    strip.background = element_blank(),
+    strip.text.x = element_blank()) +
+  ggtitle("Proteobacteria") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(plot.title = element_text(vjust = 3)) +
+  theme(plot.title = element_text(size=10)) +
+  geom_point(position  = "jitter", alpha = 0) + geom_jitter(width = 0.2, alpha = 0.9, size = 0.75, color="#FF3333")
+Proteo <- Proteo + scale_x_discrete(labels = c("EMI" = "MI1", "LMI" = "MI2"))
+Proteo <- Proteo + theme(axis.line = element_line(size = 1))
+Proteo <- Proteo + theme(panel.grid.major = element_blank(), 
+                         panel.grid.minor = element_blank(),
+                         panel.background = element_blank())
+Proteo <- Proteo + theme(legend.position  = "none")
+Proteo <- Proteo + stat_compare_means(comparisons = my_comparison,
+                                      label = "p.signif") 
+Proteo 
+
+###Firmicutes
+kiwa_06_Firm <- subset_taxa(kiwa_06_top5, Phylum == "Firmicutes")
+
+ps_phylum_Firm  <- phyloseq::tax_glom(kiwa_06_Firm, "Phylum")
+phyloseq::taxa_names(ps_phylum_Firm ) <- phyloseq::tax_table(ps_phylum_Firm )[, "Phylum"]
+phyloseq::otu_table(ps_phylum_Firm )
+
+Firm <- phyloseq::psmelt(ps_phylum_Firm) %>%
+  ggplot(data = ., aes(x = Location_Only, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(aes(color = OTU), width = .25, alpha =0) +
+  labs(x = "", y = "") +
+  facet_wrap(~ OTU, scales = "free") + theme(
+    strip.background = element_blank(),
+    strip.text.x = element_blank()) +
+  ggtitle("Firmicutes") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(plot.title = element_text(vjust = 3)) +
+  theme(plot.title = element_text(size=10)) +
+  geom_point(position  = "jitter",alpha = 0) + geom_jitter(width = 0.2, alpha = 0.9, size = .75, color="#f68f46ff")
+Firm <- Firm + scale_x_discrete(labels = c("EMI" = "MI1", "LMI" = "MI2"))
+Firm <- Firm + theme(axis.line = element_line(size = 1))
+Firm <- Firm + theme(panel.grid.major = element_blank(), 
+                     panel.grid.minor = element_blank(),
+                     panel.background = element_blank())
+Firm <- Firm + theme(legend.position  = "none")
+Firm <- Firm + stat_compare_means(comparisons = my_comparison,
+                                  label = "p.signif")
+Firm 
+
+###Cyanobacteria
+kiwa_06_Cyano <- subset_taxa(kiwa_06_top5, Phylum == "Cyanobacteria")
+
+ps_phylum_Cyano  <- phyloseq::tax_glom(kiwa_06_Cyano, "Phylum")
+phyloseq::taxa_names(ps_phylum_Cyano ) <- phyloseq::tax_table(ps_phylum_Cyano )[, "Phylum"]
+phyloseq::otu_table(ps_phylum_Cyano )
+
+Cyano <- phyloseq::psmelt(ps_phylum_Cyano) %>%
+  ggplot(data = ., aes(x = Location_Only, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(aes(color = OTU), width = .25, alpha =0) +
+  labs(x = "", y = "") +
+  facet_wrap(~ OTU, scales = "free") + theme(
+    strip.background = element_blank(),
+    strip.text.x = element_blank()) +
+  ggtitle("Cyanobacteria") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(plot.title = element_text(vjust = 3)) +
+  theme(plot.title = element_text(size=10)) +
+  geom_point(position  = "jitter",alpha = 0) + geom_jitter(width = 0.2, alpha = 0.9, size = 0.75, color="#CD950C")
+Cyano <- Cyano + scale_x_discrete(labels = c("EMI" = "MI1", "LMI" = "MI2"))
+Cyano <- Cyano + theme(axis.line = element_line(size = 1))
+Cyano <- Cyano + theme(panel.grid.major = element_blank(), 
+                       panel.grid.minor = element_blank(),
+                       panel.background = element_blank())
+Cyano <- Cyano + theme(legend.position  = "none")
+Cyano <- Cyano + stat_compare_means(comparisons = my_comparison,
+                                    label = "p.signif")
+Cyano 
+
+###Bactroidetes
+kiwa_06_Bac <- subset_taxa(kiwa_06_top5, Phylum == "Bacteroidetes")
+
+ps_phylum_Bac  <- phyloseq::tax_glom(kiwa_06_Bac, "Phylum")
+phyloseq::taxa_names(ps_phylum_Bac) <- phyloseq::tax_table(ps_phylum_Bac)[, "Phylum"]
+phyloseq::otu_table(ps_phylum_Bac)
+
+Bac <- phyloseq::psmelt(ps_phylum_Bac) %>%
+  ggplot(data = ., aes(x = Location_Only, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(aes(color = OTU), width = .25, alpha =0) +
+  labs(x = "", y = "") +
+  facet_wrap(~ OTU, scales = "free") + theme(
+    strip.background = element_blank(),
+    strip.text.x = element_blank()) +
+  ggtitle("Bacteroidetes") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(plot.title = element_text(vjust = 3)) +
+  theme(plot.title = element_text(size=10)) +
+  geom_point(position  = "jitter",alpha = 0) + geom_jitter(width = 0.2, alpha = 0.9, size = 0.75, color="#1f968bff")
+Bac <- Bac + scale_x_discrete(labels = c("EMI" = "MI1", "LMI" = "MI2"))
+Bac <- Bac + theme(axis.line = element_line(size = 1))
+Bac <- Bac + theme(panel.grid.major = element_blank(), 
+                   panel.grid.minor = element_blank(),
+                   panel.background = element_blank())
+Bac <- Bac + theme(legend.position  = "none")
+Bac <- Bac + stat_compare_means(comparisons = my_comparison,
+                                label = "p.signif")
+Bac 
+
+###Actinobacteria
+kiwa_06_Actino <- subset_taxa(kiwa_06_top5, Phylum == "Actinobacteria")
+
+ps_phylum_Actino  <- phyloseq::tax_glom(kiwa_06_Actino, "Phylum")
+phyloseq::taxa_names(ps_phylum_Actino) <- phyloseq::tax_table(ps_phylum_Actino)[, "Phylum"]
+phyloseq::otu_table(ps_phylum_Actino)
+
+Actino <- phyloseq::psmelt(ps_phylum_Actino) %>%
+  ggplot(data = ., aes(x = Location_Only, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(aes(color = OTU), width = .25, alpha =0) +
+  labs(x = "", y = "") +
+  facet_wrap(~ OTU, scales = "free") + theme(
+    strip.background = element_blank(),
+    strip.text.x = element_blank()) +
+  ggtitle("Actinobacteria") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(plot.title = element_text(vjust = 3)) +
+  theme(plot.title = element_text(size=10)) +
+  geom_point(position  = "jitter",alpha = 0) + geom_jitter(width = 0.2, alpha = 0.9, size = 0.75, color="#482677FF")
+Actino <- Actino + scale_x_discrete(labels = c("EMI" = "MI1", "LMI" = "MI2"))
+Actino <- Actino + theme(axis.line = element_line(size = 1))
+Actino <- Actino + theme(panel.grid.major = element_blank(), 
+                         panel.grid.minor = element_blank(),
+                         panel.background = element_blank())
+Actino <- Actino + theme(legend.position  = "none")
+Actino <- Actino + stat_compare_means(comparisons = my_comparison,
+                                      label = "p.signif")
+Actino 
+
+
+##Fig1
+top <- plot_grid(phylum_plot_top5) + 
+  draw_label("Relative Abundance (%) ", x=  0, y=0.5, vjust= 1.5, angle=90, size = 12)
+
+bottom <- plot_grid(Proteo, Firm, Cyano,  Bac, Actino, nrow = 1) + 
+  draw_label("Relative Abundance" , x=0, y=0.5, vjust= 1.5, angle=90, size = 12)
+
+figure1 <- plot_grid(top, bottom, nrow = 2, rel_heights  = c(.45, .55),  labels = "AUTO") 
+figure1
+
+"Proteobacteria" = "#FF3333",
+"Firmicutes" = "#f68f46ff", 
+"Cyanobacteria" = "#e8fa5bff", 
+"Bacteroidetes" ="#1f968bff", 
+"Actinobacteria" = "#482677FF"
+
+
+
+###Alpha diversity and Figure 2
+##estimate richness
+rich_kiwa_05 <- estimate_richness(kiwa_05_rare)
+head(rich_kiwa_05)
+
+###combine with metadata
+obs_meta ##datafrome of alpha diversity and metadata
+##subset inds. w/o sex
+obs_meta.2 <- subset(obs_meta, SEX != 0 )
+
+
+##model
+mod <- lmer(Shannon~SEX+Location_Only+as.numeric(AGE)+Year1+(1|HostID), data=obs_meta)
+mod
+
+##observed
+obs_lmer <- lmer(Observed ~ SEX + as.numeric(AGE) + Year1 + Location_Only + (1|HostID),  data = obs_meta.2)
+obs_lmer
+summary(obs_lmer)
+anova(obs_lmer)
+fixef(obs_lmer)
+pairwise.t.test(obs_lmer$fitted.Values, obs_meta.2$Location_Only, method=bonferroni)   
+ranova(obs_lmer)
+mean(obs_meta$Observed)
+sd(obs_meta$Observed)
+range(obs_meta$Observed)
+
+##Shannon
+sha_lmer <- lmer(Shannon ~ SEX + as.numeric(AGE) + Year1 + Location_Only + (1|HostID),  data = obs_meta.2)
+sha_lmer
+summary(sha_lmer)
+anova(sha_lmer)
+pairwise.t.test(fitted(sha_lmer), obs_meta.2$Location_Only, p.adjust.method = "bonferroni")
+mean(obs_meta$Shannon)
+sd(obs_meta$Shannon)
+range(obs_meta$Shannon)
+
+##scatter plots
+bp_obs_LO <- ggplot(obs_meta, aes(x = Location_Only, y = Observed)) + 
+  geom_boxplot( outlier.color="white") +
+  geom_jitter(width  =  0.25, alpha  = 0.9, size = 0.8, aes(color = Location_Only)) +
+  scale_color_manual(values=c("#FF3333", "#1F968BFF", "#482677FF")) 
+bp_obs_LO <- bp_obs_LO + labs(y = "Observed Richness (log)   ", x = "")
+bp_obs_LO <- bp_obs_LO + scale_x_discrete(labels = c("CIB" = "The Bahamas \n Initial Capture  \n(CIB)",
+                                                     "EMI" = "Michigan \n Recap. 1 \n(MI1)", 
+                                                     "LMI" = "Michigan \n Recap. 2 \n(MI2)"))
+bp_obs_LO <- bp_obs_LO + theme(legend.position = "none")
+bp_obs_LO <- bp_obs_LO + ylim(1.6, 3.4)
+bp_obs_LO <- bp_obs_LO + theme(plot.title = element_text(hjust = 0.5))
+bp_obs_LO <- bp_obs_LO + theme(axis.line = element_line(size = 1))
+bp_obs_LO <- bp_obs_LO + theme(panel.grid.major = element_blank(), 
+                               panel.grid.minor = element_blank(),
+                               panel.background = element_blank()) 
+bp_obs_LO <- bp_obs_LO + stat_compare_means(comparisons = my_comparison,
+                                            label = "p.signif")
+bp_obs_LO
+
+
+bp_SI_LO <- ggplot(obs_meta, aes(x = Location_Only, y = Shannon)) + 
+  geom_boxplot( outlier.color="white") +
+  geom_jitter(width  =  0.25, alpha  = 0.9, size = 0.8, aes(color =  Location_Only)) +
+  scale_color_manual(values=c("#FF3333", "#1F968BFF", "#482677FF")) 
+bp_SI_LO <- bp_SI_LO + theme(plot.title = element_blank())
+bp_SI_LO <- bp_SI_LO + labs(y = "Shannon Diversity Index", x = "")
+bp_SI_LO <- bp_SI_LO + scale_x_discrete(labels = c("CIB" = "The Bahamas \n Initial Capture  \n(CIB)",
+                                                   "EMI" = "Michigan \n Recap. 1 \n(MI1)", 
+                                                   "LMI" = "Michigan \n Recap. 2 \n(MI2)"))
+bp_SI_LO <- bp_SI_LO + theme(legend.position = "none")
+bp_SI_LO <- bp_SI_LO + scale_y_continuous(labels = scales::number_format(accuracy = 0.1), limits  = c(0.5,6.3))
+bp_SI_LO <- bp_SI_LO + theme(axis.line = element_line(size = 1))
+bp_SI_LO <- bp_SI_LO + theme(panel.grid.major = element_blank(), 
+                             panel.grid.minor = element_blank(),
+                             panel.background = element_blank())
+bp_SI_LO <- bp_SI_LO + stat_compare_means(comparisons = my_comparison,
+                                          label = "p.signif")
+
+bp_SI_LO
+
+###Repeat2 Samples
+##Remove samples that are not paired sampling from CIB to EMI 
+obs_meta_filt <- obs_meta[!is.na(obs_meta$CIBEMI),]
+dim(obs_meta_filt) 
+
+##in order to get values for increasing or decreasing values need to manually rearrage dataframe  in excel :()
+write.csv(obs_meta_filt, "obs_meta_filt.csv")
+
+###import dataset and work off of that - Obs_line _test 
+head(obs_line_test)   
+repeat2_Obs <- ggplot(data = obs_line_test, mapping = aes(Location, Observed, group = CIBEMI)) + 
+  geom_point(aes(color = Location), size = 1) +
+  scale_color_manual(values=c("#FF3333", "#1F968BFF"))+
+  geom_line(aes(linetype  = Change_Obs), size = 0.3) 
+repeat2_Obs
+repeat2_Obs <- repeat2_Obs + scale_x_discrete(expand = c(0, 0.1), labels = c("CIB" = "CIB\n\n",
+                                                                                   "EMI" = "MI1\n\n"))
+repeat2_Obs <- repeat2_Obs + theme(plot.title = element_text(hjust = 0.5))
+repeat2_Obs <- repeat2_Obs + labs(y = "", x = "")
+repeat2_Obs <- repeat2_Obs + theme(legend.position = "none")
+repeat2_Obs <- repeat2_Obs + ylim(1.6, 3.4)
+repeat2_Obs <- repeat2_Obs + theme(panel.grid.major = element_blank(), 
+                                         panel.grid.minor = element_blank(),
+                                         panel.background = element_blank())
+repeat2_Obs <- repeat2_Obs + theme(axis.line = element_line(size = 1))
+#repeat2_Obs <- repeat2_Obs + stat_compare_means(comparisons = my_comparison3,
+#                                                   paired = TRUE,
+#                                                  methods = "t.test",
+#label = "p.signif"
+#)
+
+repeat2_Obs
+
+repeat2_SI <- ggplot(data = obs_line_test, mapping = aes(Location, Shannon, group = CIBEMI)) + 
+  geom_point(aes(color = Location), size = 1) +
+  scale_color_manual(values=c("#FF3333", "#1F968BFF"))+
+  geom_line(aes(linetype  = Change_SI), size = 0.3) 
+repeat2_SI <- repeat2_SI + theme(plot.title = element_blank())
+repeat2_SI <- repeat2_SI + labs(y = "", x = "Sampling Period")
+repeat2_SI <- repeat2_SI + scale_x_discrete(expand = c(0, 0.1))
+repeat2_SI <- repeat2_SI + theme(legend.position = "none")
+repeat2_SI <- repeat2_SI + theme(panel.spacing = unit(0, "cm")) 
+repeat2_SI <- repeat2_SI + scale_x_discrete(expand = c(0,0.1),
+                                                  labels = c("CIB" = "CIB\n\n",
+                                                             "EMI" = "MI1\n\n"))
+repeat2_SI <- repeat2_SI + scale_y_continuous(labels = scales::number_format(accuracy = 0.1), limits  = c(0.5,6.3))
+repeat2_SI <- repeat2_SI + theme(panel.grid.major = element_blank(), 
+                                       panel.grid.minor = element_blank(),
+                                       panel.background = element_blank())
+repeat2_SI <- repeat2_SI + theme(axis.line = element_line(size = 1))
+#repeat2_SI <- repeat2_SI + stat_compare_means(comparisons = my_comparison3,
+#                                                   paired = TRUE,
+#                                                  methods = "t.test",
+#label = "p.signif"
+#                                                 )
+
+repeat2_SI
+
+
+
+
+
+
+
+###Repeat3Test
+###need to manually in excel arrange table just like in  repeat2 test  BUT
+###BUT - color (increasing  or decreasing should be coded for the first of the sampling points
+###aka - if the change increases between CIB  and MI1 then CIB  needs to be labeled correctly, 
+###if it changes  between MI1 and MI2 then the change needs to be coded on the MI1 line)
+
+##Import diversity_3x.xlsx file 
+div_3x <- diversity_3xfigurecomments_Feb27
+head(div_3x)
+
+repeat3_Obs <- ggplot(data = div_3x, mapping = aes(Location_Only, Observed, group = HostID)) + 
+  geom_point(aes(color = Location_Only), size = 1) + 
+  scale_color_manual(values=c("#FF3333", "#1F968BFF", "#482677FF")) +
+  geom_line(aes(linetype = Change_Obs), size = 0.3)
+repeat3_Obs <- repeat3_Obs + labs(y = " ", x = " ")
+repeat3_Obs <- repeat3_Obs + scale_x_discrete(expand = c(0, 0.1),  labels = c("CIB" = "CIB\n\n",
+                                                                                    "EMI" = "MI1\n\n",
+                                                                                    "LMI" = "MI2\n\n"))
+repeat3_Obs <- repeat3_Obs + theme(legend.position = "none")
+repeat3_Obs <- repeat3_Obs + theme(panel.spacing = unit(0, "cm")) 
+repeat3_Obs <- repeat3_Obs + scale_y_continuous(labels = scales::number_format(accuracy = 0.1))
+repeat3_Obs <- repeat3_Obs + ylim(1.6, 3.4)
+repeat3_Obs <- repeat3_Obs + theme(plot.title = element_text(hjust = 0.5))
+repeat3_Obs <- repeat3_Obs + theme(panel.grid.major = element_blank(), 
+                                         panel.grid.minor = element_blank(),
+                                         panel.background = element_blank())
+repeat3_Obs <- repeat3_Obs + theme(axis.line = element_line(size = 1))
+
+#repeat3_Obs <- repeat3_Obs + stat_compare_means(comparisons = my_comparison2, 
+#                                    paired = FALSE,
+#                                    methods = "t.test",
+#                                    label = "p.signif"
+#                                    )
+repeat3_Obs
+
+
+
+
+repeat3_SI <- ggplot(data = div_3x, mapping = aes(Location_Only, Shannon, group = HostID)) + 
+  geom_point(aes(color = Location_Only), size = 1) + 
+  scale_color_manual(values=c("#FF3333", "#1F968BFF", "#482677FF")) +
+  geom_line(aes(linetype = Change_SI), size = 0.3) 
+repeat3_SI <- repeat3_SI + theme(plot.title = element_blank())
+repeat3_SI <- repeat3_SI + labs(x = "", y = "")
+repeat3_SI <- repeat3_SI + theme(legend.position = "none")
+repeat3_SI <- repeat3_SI + theme(panel.spacing = unit(0, "cm")) 
+repeat3_SI <- repeat3_SI + scale_x_discrete(expand = c(0,0.1), labels = c("CIB" = "CIB\n\n",
+                                                                                "EMI" = "MI1\n\n",
+                                                                                "LMI" = "MI2\n\n"))
+repeat3_SI <- repeat3_SI + scale_y_continuous(labels = scales::number_format(accuracy = 0.1), limits  = c(0.5,6.3))
+repeat3_SI <- repeat3_SI + theme(panel.grid.major = element_blank(), 
+                                       panel.grid.minor = element_blank(),
+                                       panel.background = element_blank())
+repeat3_SI <- repeat3_SI + theme(axis.line = element_line(size = 1))
+#repeat3_SI <- repeat3_SI + stat_compare_means(comparisons = my_comparison2, 
+#                                                      paired = FALSE,
+#                                                      methods = "t.test",
+#                                                      #label = "p.signif"
+#)
+
+
+repeat3_SI
+
+
+plot_grid(bp_obs_LO, repeat2_Obs, repeat3_Obs, 
+          bp_SI_LO, repeat2_SI, repeat3_SI,
+          nrow = 2, rel_widths = c(.4, .3, .3), labels = "AUTO")
+r1 <- plot_grid(bp_obs_LO, repeat2_Obs, repeat3_Obs,
+                nrow = 1, rel_widths = c(.4, .3, .3), labels = "AUTO")
+r2 <- plot_grid(bp_SI_LO, repeat2_SI, repeat3_SI,
+                nrow = 1, rel_widths = c(.4, .3, .3))
+Figure3<-plot_grid(r1, r2, nrow =2)
