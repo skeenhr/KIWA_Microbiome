@@ -669,7 +669,7 @@ library(mgcv)
 DT <- DAAM_Test
 head(DT)
 ##plot observed and shannon
-gam_y <- gam(Shannon ~ s(DAYS_AFTER_ARRIVAL_MI), data = DAAM, method = "REML")
+gam_y <- gam(Shannon ~ s(DAYS_AFTER_ARRIVAL_MI, k = 3, bs = "cs"), data = DAAM, method = "REML")
 #par(mfrow = c(2,2))
 gam.check(gam_y)
 summary(gam_y)
@@ -1037,8 +1037,9 @@ ordBC = ordinate(kiwa_repeat3, method = "PCoA", distance = DistBC)
 
 
 
-
-###ANCOM-BC
+##############
+###ANCOM-BC###
+##############
 library(phyloseq)
 library(microbiome)
 library(tidyverse)
